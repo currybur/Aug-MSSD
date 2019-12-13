@@ -12,8 +12,8 @@ Read some related papers and apply some novel methods to improve the performance
 ### Excellent work
 Do you have any novel idea to improve it? Have a try.
 ## References
-- [A pytorch implementation of SSD](https://github.com/amdegroot/ssd.pytorch)\
-- [A chinese blog about SSD](https://blog.csdn.net/weixin_43384257/article/details/93501343)\
-- [VOC2007 dataset](http://host.robots.ox.ac.uk/pascal/VOC/voc2007/index.html)\
-- [What is mAP](https://www.zhihu.com/question/53405779/answer/419532990)\
+- [A pytorch implementation of SSD](https://github.com/amdegroot/ssd.pytorch)
+- [A chinese blog about SSD](https://blog.csdn.net/weixin_43384257/article/details/93501343)
+- [VOC2007 dataset](http://host.robots.ox.ac.uk/pascal/VOC/voc2007/index.html)
+- [What is mAP](https://www.zhihu.com/question/53405779/answer/419532990)
 - [Papers on small object detection](https://github.com/tjtum-chenlab/SmallObjectDetectionList)
