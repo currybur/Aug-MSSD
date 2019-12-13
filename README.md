@@ -1,6 +1,6 @@
 # Small Object Detection
 The course project of EI339 Artificial Intelligence 2019 Fall, SJTU. Our topic is small object detection, based on *SSD: Single Shot MultiBox Object Detector*(Wei Liu, et al. ECCV2016).
-## Decription
+## Description
 Recent great progress on object detection is stimulated by the deep learning pipelines, such as Faster R-CNN, Yolo and SSD. These pipelines indeed work well on large object with high resolution, clear appearance and structure from which the discriminative features can be learned. However, they usually fail to detect very small objects, as rich representations are difficult to learn from their poor-quality appearance and structure. Moreover, two stage detectors such as Faster R-CNN are more likely to perform better than one stage detectors, e.g., Yolo and SSD. In this project, you are required to improve detection performance on small objects based on the SSD pipeline.
 ## Requirement
 ### Baseline
