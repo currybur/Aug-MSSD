@@ -78,6 +78,7 @@ devkit_path = args.voc_root + 'VOC' + YEAR
 dataset_mean = (104, 117, 123)
 set_type = 'test'
 
+average_time = 0
 
 class Timer(object):
     """A simple timer."""
@@ -198,10 +199,11 @@ def do_python_eval(output_dir='output', use_07=True):
     print('Mean AP(large) = {:.4f}'.format(np.mean(l_aps)))
     print('Mean AP(extra large) = {:.4f}'.format(np.mean(xl_aps)))
     print('~~~~~~~~')
-    print('Results:')
-    for ap in aps:
-        print('{:.3f}'.format(ap))
-    print('{:.3f}'.format(np.mean(aps)))
+    print('Frames per second = {:.4f}'.format(1/average_time))
+    # print('Results:')
+    # for ap in aps:
+    #     print('{:.3f}'.format(ap))
+    # print('{:.3f}'.format(np.mean(aps)))
     print('~~~~~~~~')
     print('')
     print('--------------------------------------------------------------')
@@ -392,9 +394,8 @@ cachedir: Directory for caching the annotations
                 overlaps = inters / uni
                 ovmax = np.max(overlaps)
                 jmax = np.argmax(overlaps)
-                area = (BBGT[jmax,2]-BBGT[jmax,0])*(BBGT[jmax,3]-BBGT[jmax,1])
-            else:
-                area = (bb[2]-bb[0])*(bb[3]-bb[1])
+
+            area = (bb[2]-bb[0])*(bb[3]-bb[1])
             if area<xs_th:
                 cate = "xs"
             elif area<s_th:
@@ -466,7 +467,6 @@ def test_net(save_folder, net, cuda, dataset, transform, top_k,
         _t['im_detect'].tic()
         detections = net(x).data
         detect_time = _t['im_detect'].toc(average=False)
-
         # skip j = 0, because it's the background class
         for j in range(1, detections.size(1)):
             dets = detections[0, j, :]
@@ -487,6 +487,8 @@ def test_net(save_folder, net, cuda, dataset, transform, top_k,
 
         print('im_detect: {:d}/{:d} {:.3f}s'.format(i + 1,
                                                     num_images, detect_time))
+    global average_time
+    average_time = _t['im_detect'].average_time
 
     with open(det_file, 'wb') as f:
         pickle.dump(all_boxes, f, pickle.HIGHEST_PROTOCOL)
@@ -519,3 +521,10 @@ if __name__ == '__main__':
              BaseTransform(net.size, dataset_mean), args.top_k, 300,
              thresh=args.confidence_threshold)
 
+    # output_dir = get_output_dir('ssd300_120000', set_type)
+    # det_file = os.path.join(output_dir, 'detections.pkl')
+    # with open(det_file, 'rb') as f:
+    #     all_boxes = pickle.load(f,encoding="bytes")
+    #
+    # print('Evaluating detections')
+    # evaluate_detections(all_boxes, output_dir, dataset)

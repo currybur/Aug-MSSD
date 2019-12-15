@@ -1,0 +1,6 @@
+.{ROOT}
+├── data
+│   ├── coco
+│   ├── VOCdevkit
+│         ├──VOC2007
+│         └──VOC2012
