@@ -166,6 +166,11 @@ def write_voc_results_file(all_boxes, dataset):
 def do_python_eval(output_dir='output', use_07=True):
     cachedir = os.path.join(devkit_path, 'annotations_cache')
     aps = []
+    xs_aps = []
+    s_aps = []
+    m_aps = []
+    l_aps = []
+    xl_aps = []
     # The PASCAL VOC metric changed in 2010
     use_07_metric = use_07
     print('VOC07 metric? ' + ('Yes' if use_07_metric else 'No'))
@@ -173,14 +178,25 @@ def do_python_eval(output_dir='output', use_07=True):
         os.mkdir(output_dir)
     for i, cls in enumerate(labelmap):
         filename = get_voc_results_file_template(set_type, cls)
-        rec, prec, ap = voc_eval(
+        rec, prec, ap, scale_ap = voc_eval(
            filename, annopath, imgsetpath.format(set_type), cls, cachedir,
            ovthresh=0.5, use_07_metric=use_07_metric)
         aps += [ap]
+        xs_aps += [scale_ap["xs"]]
+        s_aps += [scale_ap["s"]]
+        m_aps += [scale_ap["m"]]
+        l_aps += [scale_ap["l"]]
+        xl_aps += [scale_ap["xl"]]
+
         print('AP for {} = {:.4f}'.format(cls, ap))
         with open(os.path.join(output_dir, cls + '_pr.pkl'), 'wb') as f:
             pickle.dump({'rec': rec, 'prec': prec, 'ap': ap}, f)
     print('Mean AP = {:.4f}'.format(np.mean(aps)))
+    print('Mean AP(extra small) = {:.4f}'.format(np.mean(xs_aps)))
+    print('Mean AP(small) = {:.4f}'.format(np.mean(s_aps)))
+    print('Mean AP(medium) = {:.4f}'.format(np.mean(m_aps)))
+    print('Mean AP(large) = {:.4f}'.format(np.mean(l_aps)))
+    print('Mean AP(extra large) = {:.4f}'.format(np.mean(xl_aps)))
     print('~~~~~~~~')
     print('Results:')
     for ap in aps:
@@ -285,27 +301,53 @@ cachedir: Directory for caching the annotations
     # extract gt objects for this class
     class_recs = {}
     npos = 0
+    areas = []
     for imagename in imagenames:
         R = [obj for obj in recs[imagename] if obj['name'] == classname]
         bbox = np.array([x['bbox'] for x in R])
+        areas.extend([(x['bbox'][2]-x['bbox'][0])*(x['bbox'][3]-x['bbox'][1]) for x in R])
         difficult = np.array([x['difficult'] for x in R]).astype(np.bool)
         det = [False] * len(R)
         npos = npos + sum(~difficult)
         class_recs[imagename] = {'bbox': bbox,
                                  'difficult': difficult,
                                  'det': det}
+    areas.sort()
+    lareas = len(areas)
+    xs_th = areas[int(lareas*0.1)]
+    s_th = areas[int(lareas*0.3)]
+    m_th = areas[int(lareas*0.7)]
+    l_th = areas[int(lareas*0.9)]
+
+    # fp_scales = {"xs":np.zeros(int(lareas*0.1)),
+    #           "s":np.zeros(int(lareas*0.3)-int(lareas*0.1)),
+    #           "m":np.zeros(int(lareas*0.7)-int(lareas*0.3)),
+    #           "l": np.zeros(int(lareas * 0.9) - int(lareas * 0.7)),
+    #           "xl": np.zeros(lareas - int(lareas * 0.9)),
+    #           }
+    count = {"xs": 0,
+             "s": 0,
+             "m": 0,
+             "l": 0,
+             "xl": 0,
+             }
+    npos_scale = {"xs": int(npos*0.1),
+             "s":  int(npos*0.2),
+             "m":  int(npos*0.4),
+             "l":  int(npos*0.2),
+             "xl": int(npos*0.1),
+             }
 
     # read dets
     detfile = detpath.format(classname)
     with open(detfile, 'r') as f:
         lines = f.readlines()
+    scale_ap = {"xs":-1,"s":-1,"m":-1,"l":-1,"xl":-1}
     if any(lines) == 1:
-
         splitlines = [x.strip().split(' ') for x in lines]
         image_ids = [x[0] for x in splitlines]
         confidence = np.array([float(x[1]) for x in splitlines])
         BB = np.array([[float(z) for z in x[2:]] for x in splitlines])
-
         # sort by confidence
         sorted_ind = np.argsort(-confidence)
         sorted_scores = np.sort(-confidence)
@@ -316,11 +358,24 @@ cachedir: Directory for caching the annotations
         nd = len(image_ids)
         tp = np.zeros(nd)
         fp = np.zeros(nd)
+        fp_scales = {"xs": np.zeros(nd),
+                     "s": np.zeros(nd),
+                     "m": np.zeros(nd),
+                     "l": np.zeros(nd),
+                     "xl": np.zeros(nd),
+                     }
+        tp_scales = {"xs": np.zeros(nd),
+                     "s": np.zeros(nd),
+                     "m": np.zeros(nd),
+                     "l": np.zeros(nd),
+                     "xl": np.zeros(nd),
+                     }
         for d in range(nd):
             R = class_recs[image_ids[d]]
             bb = BB[d, :].astype(float)
             ovmax = -np.inf
             BBGT = R['bbox'].astype(float)
+            cate = "none    "
             if BBGT.size > 0:
                 # compute overlaps
                 # intersection
@@ -337,17 +392,35 @@ cachedir: Directory for caching the annotations
                 overlaps = inters / uni
                 ovmax = np.max(overlaps)
                 jmax = np.argmax(overlaps)
+                area = (BBGT[jmax,2]-BBGT[jmax,0])*(BBGT[jmax,3]-BBGT[jmax,1])
+            else:
+                area = (bb[2]-bb[0])*(bb[3]-bb[1])
+            if area<xs_th:
+                cate = "xs"
+            elif area<s_th:
+                cate = "s"
+            elif area<m_th:
+                cate = "m"
+            elif area<l_th:
+                cate = "l"
+            else:
+                cate = "xl"
+
 
             if ovmax > ovthresh:
                 if not R['difficult'][jmax]:
                     if not R['det'][jmax]:
                         tp[d] = 1.
                         R['det'][jmax] = 1
+                        tp_scales[cate][count[cate]] = 1.
                     else:
                         fp[d] = 1.
+                        fp_scales[cate][count[cate]] = 1.
+
             else:
                 fp[d] = 1.
-
+                fp_scales[cate][count[cate]] = 1.
+            count[cate] += 1
         # compute precision recall
         fp = np.cumsum(fp)
         tp = np.cumsum(tp)
@@ -356,12 +429,18 @@ cachedir: Directory for caching the annotations
         # ground truth
         prec = tp / np.maximum(tp + fp, np.finfo(np.float64).eps)
         ap = voc_ap(rec, prec, use_07_metric)
+        for key in count:
+            fp_scales[key] = np.cumsum(fp_scales[key][:count[key]])
+            tp_scales[key] = np.cumsum(tp_scales[key][:count[key]])
+            tmp_rec = tp_scales[key] / float(npos_scale[key])
+            tmp_prec = tp_scales[key] / np.maximum(tp_scales[key] + fp_scales[key], np.finfo(np.float64).eps)
+            scale_ap[key] = voc_ap(tmp_rec, tmp_prec, use_07_metric)
+
     else:
         rec = -1.
         prec = -1.
         ap = -1.
-
-    return rec, prec, ap
+    return rec, prec, ap, scale_ap
 
 
 def test_net(save_folder, net, cuda, dataset, transform, top_k,
@@ -439,3 +518,4 @@ if __name__ == '__main__':
     test_net(args.save_folder, net, args.cuda, dataset,
              BaseTransform(net.size, dataset_mean), args.top_k, 300,
              thresh=args.confidence_threshold)
+
