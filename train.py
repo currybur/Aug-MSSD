@@ -16,7 +16,6 @@ import numpy as np
 import argparse
 
 VOC_ROOT = "./data/VOCdevkit"
-os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 
 def str2bool(v):
     return v.lower() in ("yes", "true", "t", "1")

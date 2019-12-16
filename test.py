@@ -13,7 +13,6 @@ from data import VOCAnnotationTransform, VOCDetection, BaseTransform, VOC_CLASSE
 import torch.utils.data as data
 from ssd import build_ssd
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 
 VOC_ROOT = "./data/VOCdevkit"
 
