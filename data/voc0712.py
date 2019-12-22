@@ -12,6 +12,8 @@ import torch
 import torch.utils.data as data
 import cv2
 import numpy as np
+from instaboostfast import get_new_data, InstaBoostConfig
+
 if sys.version_info[0] == 2:
     import xml.etree.cElementTree as ET
 else:
@@ -26,7 +28,35 @@ VOC_CLASSES = (  # always index 0
 
 # note: if you used our download scripts, this should be right
 VOC_ROOT = osp.join(HOME, "data/VOCdevkit/")
+possibility = 0.5
 
+def boost(img,target):
+    anns = []
+    ori_target = deepcopy(target)
+    for id in range(len(target)):
+        item = target[id]
+        ann= {}
+        ann['bbox'] = [item[0], item[1], item[2]-item[0], item[3]-item[1]]
+        ann['segmentation'] = [[item[0],item[1],item[0],item[3],item[2],item[3],item[2],item[1]]]
+        ann['category_id'] = id
+        anns.append(ann)
+    try:
+        new_anns, new_img = get_new_data(anns, img, config=InstaBoostConfig(heatmap=True))
+        for id in range(len(target)):
+            for ann in new_anns:
+                if id == ann['category_id']:
+                    target[id][0] = ann['bbox'][0]
+                    target[id][1] = ann['bbox'][1]
+                    target[id][2] = ann['bbox'][0]+ann['bbox'][2]
+                    target[id][3] = ann['bbox'][1]+ann['bbox'][3]
+    except:
+        target = ori_target
+        new_img = img
+    # r = random.randint(1,10000)
+    # cv2.imwrite("image/%d_ori.png"%r,img)
+    # cv2.imwrite("image/%d_new.png"%r,new_img)
+
+    return new_img,target
 
 class VOCAnnotationTransform(object):
     """Transforms a VOC annotation into a Tensor of bbox coords and label index
@@ -128,6 +158,9 @@ class VOCDetection(data.Dataset):
 
         if self.target_transform is not None:
             target = self.target_transform(target, width, height)
+
+        if self.image_set[0][1] in ("train","trainval") and random.random()<possibility:
+            im, target = boost(img,target)
 
         if self.transform is not None:
             target = np.array(target)

@@ -1,0 +1,12 @@
+__pycache__/
+data/VOCdevkit/
+data/__pycache__/
+data/coco
+models/
+ssd300_120000/
+weights/
+data/VOCdevkitVOC2007
+VOCdevkit/
+weights/
+ssd300_120000/
+

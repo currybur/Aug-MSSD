@@ -41,7 +41,7 @@ parser = argparse.ArgumentParser(
 parser.add_argument('--trained_model',
                     default='weights/ssd300_mAP_77.43_v2.pth', type=str,
                     help='Trained state_dict file path to open')
-parser.add_argument('--save_folder', default='eval/', type=str,
+parser.add_argument('--save_folder', default=None, type=str,
                     help='File path to save results')
 parser.add_argument('--confidence_threshold', default=0.01, type=float,
                     help='Detection confidence threshold')
@@ -55,6 +55,8 @@ parser.add_argument('--cleanup', default=True, type=str2bool,
                     help='Cleanup and remove results files following eval')
 
 args = parser.parse_args()
+if args.save_folder==None:
+    args.save_folder = "eval/"+args.trained_model.split('/')[-2]
 
 if not os.path.exists(args.save_folder):
     os.mkdir(args.save_folder)
@@ -455,7 +457,7 @@ def test_net(save_folder, net, cuda, dataset, transform, top_k,
 
     # timers
     _t = {'im_detect': Timer(), 'misc': Timer()}
-    output_dir = get_output_dir('ssd300_120000', set_type)
+    output_dir = get_output_dir(save_folder, set_type)
     det_file = os.path.join(output_dir, 'detections.pkl')
 
     for i in range(num_images):

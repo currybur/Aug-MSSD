@@ -1,7 +1,11 @@
 from data import *
 from utils.augmentations import SSDAugmentation
 from layers.modules import MultiBoxLoss
-from ssd import build_ssd
+from models.ssd import build_ssd
+from models.fssd import build_fssd
+from models.rfssd import build_rfssd
+from models.drfssd import build_drfssd
+
 import os
 import sys
 import time
@@ -16,6 +20,13 @@ import numpy as np
 import argparse
 
 VOC_ROOT = "./data/VOCdevkit"
+model_zoo = {"ssd":build_ssd,
+             "fssd":build_fssd,
+             "rfssd":build_rfssd,
+             "drfssd":build_drfssd
+             }
+
+os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 
 def str2bool(v):
     return v.lower() in ("yes", "true", "t", "1")
@@ -52,6 +63,8 @@ parser.add_argument('--visdom', default=False, type=str2bool,
                     help='Use visdom for loss visualization')
 parser.add_argument('--save_folder', default='weights/',
                     help='Directory for saving checkpoint models')
+parser.add_argument('--model',default=None,type=str,
+                    help='model for training')
 args = parser.parse_args()
 
 
@@ -86,6 +99,7 @@ def train():
             parser.error('Must specify dataset if specifying dataset_root')
         cfg = voc
         dataset = VOCDetection(root=args.dataset_root,
+                               image_sets=[('2007', 'trainval')],
                                transform=SSDAugmentation(cfg['min_dim'],
                                                          MEANS))
 
@@ -93,7 +107,8 @@ def train():
         import visdom
         viz = visdom.Visdom()
 
-    ssd_net = build_ssd('train', cfg['min_dim'], cfg['num_classes'])
+    model = model_zoo[args.model]
+    ssd_net = model('train', cfg['min_dim'], cfg['num_classes'])
     net = ssd_net
 
     if args.cuda:
@@ -104,7 +119,7 @@ def train():
         print('Resuming training, loading {}...'.format(args.resume))
         ssd_net.load_weights(args.resume)
     else:
-        vgg_weights = torch.load(args.save_folder + args.basenet)
+        vgg_weights = torch.load("./weights/" + args.basenet)
         print('Loading base network...')
         ssd_net.vgg.load_state_dict(vgg_weights)
 
@@ -185,11 +200,13 @@ def train():
         loss = loss_l + loss_c
         loss.backward()
         optimizer.step()
-        t1 = time.time()
+
         # loc_loss += loss_l.data[0]
         loc_loss += loss_l.item()
         # conf_loss += loss_c.data[0]
         conf_loss += loss_c.item()
+
+        t1 = time.time()
 
         if iteration % 10 == 0:
             print('timer: %.4f sec.' % (t1 - t0))
@@ -202,7 +219,7 @@ def train():
 
         if iteration != 0 and iteration % 5000 == 0:
             print('Saving state, iter:', iteration)
-            torch.save(ssd_net.state_dict(), 'weights/ssd300_COCO_' +
+            torch.save(ssd_net.state_dict(), 'weights/'+args.model+'_VOC_' +
                        repr(iteration) + '.pth')
     torch.save(ssd_net.state_dict(),
                args.save_folder + '' + args.dataset + '.pth')
