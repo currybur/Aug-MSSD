@@ -13,8 +13,10 @@ from data import VOC_ROOT, VOCAnnotationTransform, VOCDetection, BaseTransform
 from data import VOC_CLASSES as labelmap
 import torch.utils.data as data
 
-from ssd import build_ssd
-
+from models.ssd import build_ssd
+from models.fssd import build_fssd
+from models.rfssd import build_rfssd
+from models.drfssd import build_drfssd
 import sys
 import os
 import time
@@ -24,8 +26,13 @@ import pickle
 import cv2
 
 VOC_ROOT = "./data/VOCdevkit"
+model_zoo = {"ssd":build_ssd,
+             "fssd":build_fssd,
+             "rfssd":build_rfssd,
+             "drfssd":build_drfssd
+             }
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 if sys.version_info[0] == 2:
     import xml.etree.cElementTree as ET
 else:
@@ -53,6 +60,8 @@ parser.add_argument('--voc_root', default=VOC_ROOT,
                     help='Location of VOC root directory')
 parser.add_argument('--cleanup', default=True, type=str2bool,
                     help='Cleanup and remove results files following eval')
+parser.add_argument('--model',default=None,type=str,
+                    help='choose the model for training')
 
 args = parser.parse_args()
 if args.save_folder==None:
@@ -507,7 +516,7 @@ def evaluate_detections(box_list, output_dir, dataset):
 if __name__ == '__main__':
     # load net
     num_classes = len(labelmap) + 1                      # +1 for background
-    net = build_ssd('test', 300, num_classes)            # initialize SSD
+    net = model_zoo[args.model]('test', 300, num_classes)            # initialize SSD
     net.load_state_dict(torch.load(args.trained_model))
     net.eval()
     print('Finished loading model!')

@@ -1,6 +1,7 @@
 from data import *
 from utils.augmentations import SSDAugmentation
 from layers.modules import MultiBoxLoss
+from layers.modules import FocalLoss
 from models.ssd import build_ssd
 from models.fssd import build_fssd
 from models.rfssd import build_rfssd
@@ -25,8 +26,12 @@ model_zoo = {"ssd":build_ssd,
              "rfssd":build_rfssd,
              "drfssd":build_drfssd
              }
+losses = {
+    "MultiBoxLoss":MultiBoxLoss,
+    "FocalLoss":FocalLoss
+}
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+os.environ["CUDA_VISIBLE_DEVICES"] = "6"
 
 def str2bool(v):
     return v.lower() in ("yes", "true", "t", "1")
@@ -64,7 +69,9 @@ parser.add_argument('--visdom', default=False, type=str2bool,
 parser.add_argument('--save_folder', default='weights/',
                     help='Directory for saving checkpoint models')
 parser.add_argument('--model',default=None,type=str,
-                    help='model for training')
+                    help='choose the model for training')
+parser.add_argument('--loss',default="MultiBoxLoss",type=str,
+                    help='choose the loss for training')
 args = parser.parse_args()
 
 
@@ -99,7 +106,6 @@ def train():
             parser.error('Must specify dataset if specifying dataset_root')
         cfg = voc
         dataset = VOCDetection(root=args.dataset_root,
-                               image_sets=[('2007', 'trainval')],
                                transform=SSDAugmentation(cfg['min_dim'],
                                                          MEANS))
 
@@ -135,7 +141,7 @@ def train():
 
     optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum,
                           weight_decay=args.weight_decay)
-    criterion = MultiBoxLoss(cfg['num_classes'], 0.5, True, 0, True, 3, 0.5,
+    criterion = losses[args.loss](cfg['num_classes'], 0.5, True, 0, True, 3, 0.5,
                              False, args.cuda)
 
     net.train()
@@ -217,12 +223,12 @@ def train():
             update_vis_plot(iteration, loss_l.data[0], loss_c.data[0],
                             iter_plot, epoch_plot, 'append')
 
-        if iteration != 0 and iteration % 5000 == 0:
+        if (iteration != 0 and iteration % 5000 == 0):
             print('Saving state, iter:', iteration)
-            torch.save(ssd_net.state_dict(), 'weights/'+args.model+'_VOC_' +
+            torch.save(ssd_net.state_dict(), args.save_folder+args.model+'_VOC_' +
                        repr(iteration) + '.pth')
     torch.save(ssd_net.state_dict(),
-               args.save_folder + '' + args.dataset + '.pth')
+               args.save_folder + args.model + '_VOC_' + repr(cfg['max_iter']) + '.pth')
 
 
 def adjust_learning_rate(optimizer, gamma, step):
