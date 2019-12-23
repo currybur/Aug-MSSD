@@ -12,6 +12,8 @@ import torch
 import torch.utils.data as data
 import cv2
 import numpy as np
+from copy import deepcopy
+import random
 from instaboostfast import get_new_data, InstaBoostConfig
 
 if sys.version_info[0] == 2:
@@ -160,7 +162,7 @@ class VOCDetection(data.Dataset):
             target = self.target_transform(target, width, height)
 
         if self.image_set[0][1] in ("train","trainval") and random.random()<possibility:
-            im, target = boost(img,target)
+            img, target = boost(img,target)
 
         if self.transform is not None:
             target = np.array(target)
