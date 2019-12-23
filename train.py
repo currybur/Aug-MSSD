@@ -135,9 +135,11 @@ def train():
     if not args.resume:
         print('Initializing weights...')
         # initialize newly added layers' weights with xavier method
-        ssd_net.extras.apply(weights_init)
-        ssd_net.loc.apply(weights_init)
-        ssd_net.conf.apply(weights_init)
+        modules = ["extras","loc","conf","transforms","pyramids","deconv"]
+        for module in modules:
+            if hasattr(ssd_net, module):
+                getattr(ssd_net, module).apply(weights_init)
+
 
     optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum,
                           weight_decay=args.weight_decay)
