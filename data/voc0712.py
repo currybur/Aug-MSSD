@@ -8,6 +8,8 @@ Updated by: Ellis Brown, Max deGroot
 from .config import HOME
 import os.path as osp
 import sys
+import json
+import time
 import torch
 import torch.utils.data as data
 import cv2
@@ -15,6 +17,8 @@ import numpy as np
 from copy import deepcopy
 import random
 from instaboostfast import get_new_data, InstaBoostConfig
+import random
+from copy import deepcopy
 
 if sys.version_info[0] == 2:
     import xml.etree.cElementTree as ET
@@ -32,25 +36,68 @@ VOC_CLASSES = (  # always index 0
 VOC_ROOT = osp.join(HOME, "data/VOCdevkit/")
 possibility = 0.5
 
-def boost(img,target):
+with open("data/VOC2007_segmentation.json","r") as f:
+    seg_2007 = json.load(f)
+with open("data/VOC2012_segmentation.json","r") as f:
+    seg_2012 = json.load(f)
+# {image_id:[{"bbox":[xmin,ymin,xmax,yamx](relative),"segmentation":coco_style},...],...}
+
+
+def check(bbox1,bbox2):
+    x11, y11, x12, y12 = bbox1
+    x21, y21, x22, y22 = bbox2
+
+    if not ((x11 < x22) and (y11 < y22) and (x21 < x12) and (y21 < y12)):
+        return False
+    intersection = (min(x12,x22)-max(x11,x21))*(min(y12,y22)-max(y11,y21))
+    intersection = max(0, intersection)
+    total = (x12-x11)*(y12-y11)+(x22-x21)*(y22-y21)
+    union = total - intersection
+    if float(intersection)/float(union)>0.95:
+        return True
+    else:
+        return False
+
+
+def find_seg(id_tuple,bbox):
+    year = id_tuple[0][-4:]
+    image_id = str(int(id_tuple[1]))
+    if year=="2007":
+        corr = seg_2007[image_id]
+    else:
+        corr = seg_2012[image_id]
+
+    for item in corr:
+        if check(item["bbox"],bbox):
+            return item["segmentation"]
+    raise AttributeError
+
+
+def boost(img,target,img_id):
+    t0 = time.time()
+
     anns = []
+    height, width, channels = img.shape
     ori_target = deepcopy(target)
-    for id in range(len(target)):
-        item = target[id]
-        ann= {}
-        ann['bbox'] = [item[0], item[1], item[2]-item[0], item[3]-item[1]]
-        ann['segmentation'] = [[item[0],item[1],item[0],item[3],item[2],item[3],item[2],item[1]]]
-        ann['category_id'] = id
-        anns.append(ann)
     try:
-        new_anns, new_img = get_new_data(anns, img, config=InstaBoostConfig(heatmap=True))
+        for id in range(len(target)):
+            item = target[id]
+            ann= {}
+            ann['bbox'] = [item[0]*width, item[1]*height, (item[2]-item[0])*width, (item[3]-item[1])*height]
+            ann['segmentation'] = find_seg(img_id,item[:4])
+            ann['category_id'] = id
+            anns.append(ann)
+        # print("t1",time.time()-t0)
+        new_anns, new_img = get_new_data(anns, img, config=InstaBoostConfig(heatmap_flag=True))
+        # print("t2",time.time()-t0)
         for id in range(len(target)):
             for ann in new_anns:
                 if id == ann['category_id']:
-                    target[id][0] = ann['bbox'][0]
-                    target[id][1] = ann['bbox'][1]
-                    target[id][2] = ann['bbox'][0]+ann['bbox'][2]
-                    target[id][3] = ann['bbox'][1]+ann['bbox'][3]
+                    target[id][0] = ann['bbox'][0]/float(width)
+                    target[id][1] = ann['bbox'][1]/float(height)
+                    target[id][2] = (ann['bbox'][0]+ann['bbox'][2])/float(width)
+                    target[id][3] = (ann['bbox'][1]+ann['bbox'][3])/float(height)
+        # print("t3",time.time()-t0)
     except:
         target = ori_target
         new_img = img
@@ -99,7 +146,7 @@ class VOCAnnotationTransform(object):
             for i, pt in enumerate(pts):
                 cur_pt = int(bbox.find(pt).text) - 1
                 # scale height or width
-                cur_pt = cur_pt / width if i % 2 == 0 else cur_pt / height
+                cur_pt = float(cur_pt) / width if i % 2 == 0 else float(cur_pt) / height
                 bndbox.append(cur_pt)
             label_idx = self.class_to_ind[name]
             bndbox.append(label_idx)
@@ -145,8 +192,27 @@ class VOCDetection(data.Dataset):
 
     def __getitem__(self, index):
         im, gt, h, w = self.pull_item(index)
+        # img_id = self.ids[index]
+        #
+        # target = ET.parse(self._annopath % img_id).getroot()
+        # img = cv2.imread(self._imgpath % img_id)
+        # height, width, channels = img.shape
+        #
+        # if self.target_transform is not None:
+        #     target = self.target_transform(target, width, height)
+        #
+        # if self.image_set[0][1] in ("train","trainval") and random.random()<possibility:
+        #     img, target = boost(img,target,img_id)
+        #
+        # if self.transform is not None:
+        #     target = np.array(target)
+        #     img, boxes, labels = self.transform(img, target[:, :4], target[:, 4])
+        #     # to rgb
+        #     img = img[:, :, (2, 1, 0)]
+        #     # img = img.transpose(2, 0, 1)
+        #     target = np.hstack((boxes, np.expand_dims(labels, axis=1)))
 
-        return im, gt
+        return im,gt
 
     def __len__(self):
         return len(self.ids)
@@ -162,7 +228,7 @@ class VOCDetection(data.Dataset):
             target = self.target_transform(target, width, height)
 
         if self.image_set[0][1] in ("train","trainval") and random.random()<possibility:
-            img, target = boost(img,target)
+            img, target = boost(img,target,img_id)
 
         if self.transform is not None:
             target = np.array(target)

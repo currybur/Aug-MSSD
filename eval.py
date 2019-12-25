@@ -32,7 +32,7 @@ model_zoo = {"ssd":build_ssd,
              "drfssd":build_drfssd
              }
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+os.environ["CUDA_VISIBLE_DEVICES"] = "5"
 if sys.version_info[0] == 2:
     import xml.etree.cElementTree as ET
 else:
@@ -176,6 +176,8 @@ def write_voc_results_file(all_boxes, dataset):
 
 
 def do_python_eval(output_dir='output', use_07=True):
+    save_dir = os.path.join(output_dir,"result.txt")
+    save_file = open(save_dir,"w")
     cachedir = os.path.join(devkit_path, 'annotations_cache')
     aps = []
     xs_aps = []
@@ -186,8 +188,10 @@ def do_python_eval(output_dir='output', use_07=True):
     # The PASCAL VOC metric changed in 2010
     use_07_metric = use_07
     print('VOC07 metric? ' + ('Yes' if use_07_metric else 'No'))
+    save_file.write('VOC07 metric? ' + ('Yes' if use_07_metric else 'No') + '\n')
     if not os.path.isdir(output_dir):
         os.mkdir(output_dir)
+
     for i, cls in enumerate(labelmap):
         filename = get_voc_results_file_template(set_type, cls)
         rec, prec, ap, scale_ap = voc_eval(
@@ -201,6 +205,7 @@ def do_python_eval(output_dir='output', use_07=True):
         xl_aps += [scale_ap["xl"]]
 
         print('AP for {} = {:.4f}'.format(cls, ap))
+        save_file.write('AP for {} = {:.4f}\n'.format(cls, ap))
         with open(os.path.join(output_dir, cls + '_pr.pkl'), 'wb') as f:
             pickle.dump({'rec': rec, 'prec': prec, 'ap': ap}, f)
     print('Mean AP = {:.4f}'.format(np.mean(aps)))
@@ -222,6 +227,27 @@ def do_python_eval(output_dir='output', use_07=True):
     print('Results should be very close to the official MATLAB eval code.')
     print('--------------------------------------------------------------')
 
+    save_file.write('Mean AP = {:.4f}\n'.format(np.mean(aps)))
+    save_file.write('Mean AP(extra small) = {:.4f}\n'.format(np.mean(xs_aps)))
+    save_file.write('Mean AP(small) = {:.4f}\n'.format(np.mean(s_aps)))
+    save_file.write('Mean AP(medium) = {:.4f}\n'.format(np.mean(m_aps)))
+    save_file.write('Mean AP(large) = {:.4f}\n'.format(np.mean(l_aps)))
+    save_file.write('Mean AP(extra large) = {:.4f}\n'.format(np.mean(xl_aps)))
+    save_file.write('~~~~~~~~\n')
+    save_file.write('Frames per second = {:.4f}\n'.format(1/average_time))
+    # print('Results:')
+    # for ap in aps:
+    #     print('{:.3f}'.format(ap))
+    # print('{:.3f}'.format(np.mean(aps)))
+    save_file.write('~~~~~~~~\n')
+    save_file.write('\n')
+    save_file.write('--------------------------------------------------------------\n')
+    save_file.write('Results computed with the **unofficial** Python eval code.\n')
+    save_file.write('Results should be very close to the official MATLAB eval code.\n')
+    save_file.write('--------------------------------------------------------------\n')
+
+
+    save_file.close()
 
 def voc_ap(rec, prec, use_07_metric=True):
     """ ap = voc_ap(rec, prec, [use_07_metric])

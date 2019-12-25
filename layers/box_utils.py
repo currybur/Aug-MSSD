@@ -124,14 +124,14 @@ def encode(matched, priors, variances):
     Return:
         encoded boxes (tensor), Shape: [num_priors, 4]
     """
-
+    eps = 1e-5
     # dist b/t match center and prior's center
     g_cxcy = (matched[:, :2] + matched[:, 2:])/2 - priors[:, :2]
     # encode variance
     g_cxcy /= (variances[0] * priors[:, 2:])
     # match wh / prior wh
     g_wh = (matched[:, 2:] - matched[:, :2]) / priors[:, 2:]
-    g_wh = torch.log(g_wh) / variances[1]
+    g_wh = torch.log(g_wh+eps) / variances[1]
     # return target for smooth_l1_loss
     return torch.cat([g_cxcy, g_wh], 1)  # [num_priors,4]
 
@@ -237,3 +237,15 @@ def nms(boxes, scores, overlap=0.5, top_k=200):
         # keep only elements with an IoU <= overlap
         idx = idx[IoU.le(overlap)]
     return keep, count
+
+
+def one_hot_embedding(labels, num_classes):
+    '''Embedding labels to one-hot form.
+    Args:
+      labels: (LongTensor) class labels, sized [N,].
+      num_classes: (int) number of classes.
+    Returns:
+      (tensor) encoded labels, sized [N,#classes].
+    '''
+    y = torch.eye(num_classes)  # [D,D]
+    return y[labels]            # [N,D]

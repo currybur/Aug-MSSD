@@ -19,6 +19,8 @@ import torch.nn.init as init
 import torch.utils.data as data
 import numpy as np
 import argparse
+import warnings
+warnings.filterwarnings("ignore")
 
 VOC_ROOT = "./data/VOCdevkit"
 model_zoo = {"ssd":build_ssd,
@@ -31,7 +33,7 @@ losses = {
     "FocalLoss":FocalLoss
 }
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "6"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 def str2bool(v):
     return v.lower() in ("yes", "true", "t", "1")
@@ -52,7 +54,7 @@ parser.add_argument('--resume', default=None, type=str,
                     help='Checkpoint state_dict file to resume training from')
 parser.add_argument('--start_iter', default=0, type=int,
                     help='Resume training at this iter')
-parser.add_argument('--num_workers', default=4, type=int,
+parser.add_argument('--num_workers', default=32, type=int,
                     help='Number of workers used in dataloading')
 parser.add_argument('--cuda', default=True, type=str2bool,
                     help='Use CUDA to train model')
@@ -172,7 +174,10 @@ def train():
                                   pin_memory=True)
     # create batch iterator
     batch_iterator = iter(data_loader)
+
+    tot = 0
     for iteration in range(args.start_iter, cfg['max_iter']):
+        t0 = time.time()
         if args.visdom and iteration != 0 and (iteration % epoch_size == 0):
             update_vis_plot(epoch, loc_loss, conf_loss, epoch_plot, None,
                             'append', epoch_size)
@@ -200,7 +205,7 @@ def train():
             images = Variable(images)
             targets = [Variable(ann, volatile=True) for ann in targets]
         # forward
-        t0 = time.time()
+
         out = net(images)
         # backprop
         optimizer.zero_grad()
@@ -215,9 +220,10 @@ def train():
         conf_loss += loss_c.item()
 
         t1 = time.time()
-
+        tot += t1-t0
         if iteration % 10 == 0:
-            print('timer: %.4f sec.' % (t1 - t0))
+            print('timer: %.4f sec.' %(tot/10))
+            tot = 0
             # print('iter ' + repr(iteration) + ' || Loss: %.4f ||' % (loss.data[0]), end=' ')
             print('iter ' + repr(iteration) + '/' + repr(cfg['max_iter']) + ' || Loss: %.4f ||' % (loss.item()), end=' ')
 
