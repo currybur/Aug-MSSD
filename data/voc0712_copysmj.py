@@ -39,11 +39,19 @@ with open("data/VOC2007_segmentation.json","r") as f:
     seg_2007 = json.load(f)
 with open("data/VOC2012_segmentation.json","r") as f:
     seg_2012 = json.load(f)
+with open("/home/yolo/ssd/data/index.json","r") as f:
+    SOJ_INDEX = json.load(f)
+with open("/home/yolo/ssd/data/train_index_2007.json","r") as f:
+   TRAIN_INDEX_07 = list(json.load(f).keys())
+with open("/home/yolo/ssd/data/train_index_2012.json","r") as f:
+   TRAIN_INDEX_12 = list(json.load(f).keys())
+
+copy_possibility = 0.5
+scale_possibility = 0.5
 
 
 def load_index():
     """
-
     :return: {img_num1: [ [xmin, xmax, ymin, ymax], [xmin, xmax, ymin, ymax], ....]}
     """
     f = open('/home/yolo/ssd/data/index.json','r')
@@ -57,109 +65,6 @@ def load_index():
     q.close()
     return train_imgs, tr12, small_object_imgs
 
-
-TRAIN_INDEX_07, TRAIN_INDEX_12, SOJ_INDEX = load_index()
-TRAIN_INDEX_07 = list(TRAIN_INDEX_07.keys())
-TRAIN_INDEX_12 = list(TRAIN_INDEX_12.keys())
-
-copy_possibility = 0.8
-scale_possibility = 0.3
-
-# 按bbox来复制小物体
-# def repeated(id, img, target, year):
-#     if id not in SOJ_INDEX:
-#         return img
-#     objects = SOJ_INDEX[id]  # [xmin, xmax, ymin, ymax,
-#                                         #  name, pose, truncated, difficult]s
-#     xmins = [int(float(i.text)) for i in target.iter('xmin')]
-#     xmaxs = [int(float(i.text)) for i in target.iter('xmax')]
-#     ymins = [int(float(i.text)) for i in target.iter('ymin')]
-#     ymaxs = [int(float(i.text)) for i in target.iter('ymax')]
-#     width = int(target.find('size').find('width').text)
-#     height = int(target.find('size').find('height').text)
-#
-#     for obj in objects:
-#         if random.random() > possibility:
-#             continue
-#         # 获得小物体的信息
-#         [xmin, xmax, ymin, ymax, name, pose, truncated, difficult] = obj
-#         xmin = int(xmin)
-#         xmax =int(xmax)
-#         ymin = int(ymin)
-#         ymax = int(ymax)
-#         wid, hei = xmax-xmin, ymax-ymin
-#
-#         # 随机生成位置来复制小物体
-#         count = 0
-#         for i in range(10):
-#             flag = 1
-#             try:
-#                 center = (random.randrange(wid//2+1, width-wid//2),random.randrange(hei//2+1,height-hei//2))
-#             except:
-#                 continue
-#             for j in range(len(xmins)):  # 和所有方块检查相交
-#                 x1,x2,y1,y2 = xmins[j],xmaxs[j],ymins[j],ymaxs[j]
-#                 c = ((x1+x2)/2, (y1+y1)/2)
-#
-#                 # 只要有一个相交
-#                 if abs(c[0]-center[0])<wid/2+(x2-x1)/2\
-#                         and abs(c[1]-center[1])<hei/2+(y2-y1)/2:
-#                     flag = 0
-#                     break
-#             if flag == 0:  # 该位置不行，再找一个
-#                 continue
-#
-#             # 位置可行，开始复制
-#             count+=1
-#             item = img[ymin : ymax,xmin:xmax, : ]
-#             # cv2.imshow('1',item)
-#             # cv2.waitKey()
-#             img[center[1]-(hei+1)//2:center[1]+hei//2,\
-#             center[0]-(wid+1)//2:center[0]+wid//2, :] = item
-#             new_xmin = center[0]-(wid+1)//2
-#             new_xmax =  center[0]+wid//2
-#             new_ymin = center[1]-(hei+1)//2
-#             new_ymax = center[1]+hei//2
-#             xmins.append(new_xmin)
-#             xmaxs.append(new_xmax)
-#             ymins.append(new_ymin)
-#             ymaxs.append(new_ymax)
-#
-#             # 加入annotations
-#             node_obj = ET.Element('object')
-#             node_name = ET.Element('name')
-#             node_name.text = name
-#             node_pose = ET.Element('pose')
-#             node_pose.text = pose
-#             node_tru = ET.Element('truncated')
-#             node_tru.text = truncated
-#             node_diff = ET.Element('difficult')
-#             node_diff.text = difficult
-#             node_box = ET.Element('bndbox')
-#             node_xi = ET.Element('xmin')
-#             node_xi.text = new_xmin
-#             node_yi = ET.Element('ymin')
-#             node_yi.text = new_ymin
-#             node_xa = ET.Element('xmax')
-#             node_xa.text = new_xmax
-#             node_ya = ET.Element('ymax')
-#             node_ya.text = new_ymax
-#             node_box.append(node_xi)
-#             node_box.append(node_yi)
-#             node_box.append(node_xa)
-#             node_box.append(node_ya)
-#             node_obj.append(node_name)
-#             node_obj.append(node_pose)
-#             node_obj.append(node_tru)
-#             node_obj.append(node_diff)
-#             node_obj.append(node_box)
-#             target.append(node_obj)
-#
-#             if count==4:
-#                 break
-#
-#
-#     return img, target
 
 def check(bbox1,bbox2):
     x11, y11, x12, y12 = bbox1
@@ -214,7 +119,105 @@ def cocoseg_to_binary(seg, height, width):
     return mask[:, :, 0]
 
 
-def repeated(id, img, target, year):
+# 按bbox来复制小物体
+def bbox_copy(id, img, target, year):
+    if id not in SOJ_INDEX:
+        return img
+    objects = SOJ_INDEX[id]  # [xmin, xmax, ymin, ymax,
+                                        #  name, pose, truncated, difficult]s
+    xmins = [int(float(i.text)) for i in target.iter('xmin')]
+    xmaxs = [int(float(i.text)) for i in target.iter('xmax')]
+    ymins = [int(float(i.text)) for i in target.iter('ymin')]
+    ymaxs = [int(float(i.text)) for i in target.iter('ymax')]
+    width = int(target.find('size').find('width').text)
+    height = int(target.find('size').find('height').text)
+
+    for obj in objects:
+        if random.random() > copy_possibility:
+            continue
+        # 获得小物体的信息
+        [xmin, xmax, ymin, ymax, name, pose, truncated, difficult] = obj
+        xmin = int(xmin)
+        xmax =int(xmax)
+        ymin = int(ymin)
+        ymax = int(ymax)
+        wid, hei = xmax-xmin, ymax-ymin
+
+        # 随机生成位置来复制小物体
+        count = 0
+        for i in range(10):
+            flag = 1
+            try:
+                center = (random.randrange(wid//2+1, width-wid//2),random.randrange(hei//2+1,height-hei//2))
+            except:
+                continue
+            for j in range(len(xmins)):  # 和所有方块检查相交
+                x1,x2,y1,y2 = xmins[j],xmaxs[j],ymins[j],ymaxs[j]
+                c = ((x1+x2)/2, (y1+y1)/2)
+
+                # 只要有一个相交
+                if abs(c[0]-center[0])<wid/2+(x2-x1)/2\
+                        and abs(c[1]-center[1])<hei/2+(y2-y1)/2:
+                    flag = 0
+                    break
+            if flag == 0:  # 该位置不行，再找一个
+                continue
+
+            # 位置可行，开始复制
+            count+=1
+            item = img[ymin : ymax,xmin:xmax, : ]
+            # cv2.imshow('1',item)
+            # cv2.waitKey()
+            img[center[1]-(hei+1)//2:center[1]+hei//2,\
+            center[0]-(wid+1)//2:center[0]+wid//2, :] = item
+            new_xmin = center[0]-(wid+1)//2
+            new_xmax =  center[0]+wid//2
+            new_ymin = center[1]-(hei+1)//2
+            new_ymax = center[1]+hei//2
+            xmins.append(new_xmin)
+            xmaxs.append(new_xmax)
+            ymins.append(new_ymin)
+            ymaxs.append(new_ymax)
+
+            # 加入annotations
+            node_obj = ET.Element('object')
+            node_name = ET.Element('name')
+            node_name.text = name
+            node_pose = ET.Element('pose')
+            node_pose.text = pose
+            node_tru = ET.Element('truncated')
+            node_tru.text = truncated
+            node_diff = ET.Element('difficult')
+            node_diff.text = difficult
+            node_box = ET.Element('bndbox')
+            node_xi = ET.Element('xmin')
+            node_xi.text = new_xmin
+            node_yi = ET.Element('ymin')
+            node_yi.text = new_ymin
+            node_xa = ET.Element('xmax')
+            node_xa.text = new_xmax
+            node_ya = ET.Element('ymax')
+            node_ya.text = new_ymax
+            node_box.append(node_xi)
+            node_box.append(node_yi)
+            node_box.append(node_xa)
+            node_box.append(node_ya)
+            node_obj.append(node_name)
+            node_obj.append(node_pose)
+            node_obj.append(node_tru)
+            node_obj.append(node_diff)
+            node_obj.append(node_box)
+            target.append(node_obj)
+
+            if count==4:
+                break
+
+
+    return img, target
+
+
+# 按seg来复制小物体并缩放
+def seg_copy(id, img, target, year):
     if id not in SOJ_INDEX:
         return img
     objects = SOJ_INDEX[id]  # [xmin, xmax, ymin, ymax,
@@ -464,7 +467,7 @@ class VOCDetection(data.Dataset):
                 else:  # 图中包含小物体，则复制
                     target = ET.parse(self._annopath % img_id).getroot()
                     img = cv2.imread(self._imgpath % img_id, cv2.IMREAD_COLOR)
-                    img, target = repeated(img_id[1], img, target, img_id[0][-4:])
+                    img, target = seg_copy(img_id[1], img, target, img_id[0][-4:])
                 height, width, channels = img.shape
                 if self.target_transform is not None:
                     target = self.target_transform(target, width, height)
