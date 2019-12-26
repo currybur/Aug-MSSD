@@ -77,7 +77,7 @@ def check(bbox1,bbox2):
     total = (x12-x11)*(y12-y11)+(x22-x21)*(y22-y21)
     union = total - intersection
     # print(float(intersection)/float(union))
-    if float(intersection)/float(union)>0.95:
+    if float(intersection)/float(union)>0.85:
         return True
     else:
 
@@ -95,6 +95,7 @@ def find_seg(id_tuple,bbox):
     for item in corr:
         if check(item["bbox"],bbox):
             return item["segmentation"]
+    return None
 
 
 def cocoseg_to_binary(seg, height, width):
@@ -240,7 +241,6 @@ def seg_copy(id, img, target, year):
     class_to_ind = dict(zip(VOC_CLASSES, range(len(VOC_CLASSES))))
 
     for obj in objects:
-
         # 获得小物体的信息
         [xmin, xmax, ymin, ymax, name, pose, truncated, difficult] = obj
         xmin = int(xmin)
@@ -248,8 +248,7 @@ def seg_copy(id, img, target, year):
         ymin = int(ymin)
         ymax = int(ymax)
         wid, hei = xmax-xmin, ymax-ymin
-        wid = min(random.randrange(int(0.8*wid), int(1.2*wid)),width-2)
-        hei = min(random.randrange(int(0.8*hei), int(1.2*hei)), height-2)
+
 
         bbox = [xmin/width, ymin/height, xmax/width, ymax/height]
         # print(bbox)
@@ -259,14 +258,18 @@ def seg_copy(id, img, target, year):
             continue
         # print(seg)
         mask = cocoseg_to_binary(seg, height, width)
-        item = img.copy()
-        for i in range(3):
-            item[:,:,i] = item[:,:,i] * mask
-        item = item[ymin:ymax, xmin:xmax, :]
-        item = cv2.resize(item, (wid, hei))
+
         # 随机生成位置来复制小物体
         count = 0
         for i in range(10):
+            wid = min(random.randrange(int(0.8 * (xmax-xmin)), int(1.2 * (xmax-xmin))), width - 2)
+            hei = min(random.randrange(int(0.8 * (ymax-ymin)), int(1.2 * (ymax-ymin))), height - 2)
+            item = img.copy()
+            for i in range(3):
+                item[:, :, i] = item[:, :, i] * mask
+            item = item[ymin:ymax, xmin:xmax, :]
+            item = cv2.resize(item, (wid, hei))
+
             flag = 1
             center = (random.randrange(wid//2+1, width-wid//2),random.randrange(hei//2+1,height-hei//2))
 
@@ -302,7 +305,8 @@ def seg_copy(id, img, target, year):
             name = name.lower().strip()
             idx = class_to_ind[name]
             target.append([new_xmin/width,new_ymin/height,new_xmax/width,new_ymax/height,idx])
-
+            if random.random()>0.75:
+                break
             if count==4:
                 break
 
@@ -320,10 +324,12 @@ def boost(img,target,img_id):
             ann= {}
             ann['bbox'] = [item[0]*width, item[1]*height, (item[2]-item[0])*width, (item[3]-item[1])*height]
             ann['segmentation'] = find_seg(img_id,item[:4])
+            if not ann['segmentation']:
+                continue
             ann['category_id'] = id
             anns.append(ann)
         # print("t1",time.time()-t0)
-        new_anns, new_img = get_new_data(anns, img, config=InstaBoostConfig(heatmap_flag=False))
+        new_anns, new_img = get_new_data(anns, img, config=InstaBoostConfig(heatmap_flag=True))
         # print("t2",time.time()-t0)
         for id in range(len(target)):
             for ann in new_anns:
@@ -446,10 +452,15 @@ class VOCDetection(data.Dataset):
             height, width, channels = img.shape
             if self.target_transform is not None:
                 target = self.target_transform(target, width, height)
-            if self.image_set[0][1] in ("train","trainval") and random.random()<boost_possibility:
-                img, target = boost(img,target,img_id)
+            flag = False
             if self.image_set[0][1] in ("train","trainval") and img_id[1] in SOJ_INDEX and random.random() < copy_possibility:
                 img, target = seg_copy(img_id[1], img, target, img_id[0][-4:])
+                flag = True
+            if self.image_set[0][1] in ("train","trainval") and random.random()<boost_possibility:
+                img, target = boost(img,target,img_id)
+
+            # if flag:
+            #     cv2.imwrite("image/%d_boost.png"%index,img)
             # if self.num<20:
             #     print(index)
             #     print(target)
@@ -457,6 +468,7 @@ class VOCDetection(data.Dataset):
 
 
         except:
+            print("augmentation fails")
             target = ET.parse(self._annopath % img_id).getroot()
             img = cv2.imread(self._imgpath % img_id, cv2.IMREAD_COLOR)
             height, width, channels = img.shape
