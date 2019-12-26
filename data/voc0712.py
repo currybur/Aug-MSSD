@@ -8,22 +8,21 @@ Updated by: Ellis Brown, Max deGroot
 from .config import HOME
 import os.path as osp
 import sys
-import json
-import time
 import torch
 import torch.utils.data as data
 import cv2
 import numpy as np
-from copy import deepcopy
-import random
-from instaboostfast import get_new_data, InstaBoostConfig
-import random
-from copy import deepcopy
-
+import json
 if sys.version_info[0] == 2:
     import xml.etree.cElementTree as ET
 else:
     import xml.etree.ElementTree as ET
+import random
+from instaboostfast import get_new_data, InstaBoostConfig
+import pycocotools.mask as cocomask
+from copy import deepcopy
+import time
+
 
 VOC_CLASSES = (  # always index 0
     'aeroplane', 'bicycle', 'bird', 'boat',
@@ -33,14 +32,38 @@ VOC_CLASSES = (  # always index 0
     'sheep', 'sofa', 'train', 'tvmonitor')
 
 # note: if you used our download scripts, this should be right
-VOC_ROOT = osp.join(HOME, "data/VOCdevkit/")
-possibility = 0.5
+#VOC_ROOT = osp.join(HOME, "data/VOCdevkit/")
+VOC_ROOT = "/home/yolo/VOCdevkit/"
 
 with open("data/VOC2007_segmentation.json","r") as f:
     seg_2007 = json.load(f)
 with open("data/VOC2012_segmentation.json","r") as f:
     seg_2012 = json.load(f)
-# {image_id:[{"bbox":[xmin,ymin,xmax,yamx](relative),"segmentation":coco_style},...],...}
+with open("data/index.json","r") as f:
+    SOJ_INDEX = json.load(f)
+with open("data/train_index_2007.json","r") as f:
+   TRAIN_INDEX_07 = list(json.load(f).keys())
+with open("data/train_index_2012.json","r") as f:
+   TRAIN_INDEX_12 = list(json.load(f).keys())
+
+copy_possibility = 0.5
+scale_possibility = 0.5
+boost_possibility = 0.5
+#
+# def load_index():
+#     """
+#     :return: {img_num1: [ [xmin, xmax, ymin, ymax], [xmin, xmax, ymin, ymax], ....]}
+#     """
+#     f = open('data/index.json','r')
+#     small_object_imgs = json.load(f)
+#     p = open('data/train_index_2007.json', 'r')
+#     q = open('data/train_index_2012.json', 'r')
+#     train_imgs = json.load(p)
+#     tr12 = json.load(q)
+#     f.close()
+#     p.close()
+#     q.close()
+#     return train_imgs, tr12, small_object_imgs
 
 
 def check(bbox1,bbox2):
@@ -53,9 +76,11 @@ def check(bbox1,bbox2):
     intersection = max(0, intersection)
     total = (x12-x11)*(y12-y11)+(x22-x21)*(y22-y21)
     union = total - intersection
+    # print(float(intersection)/float(union))
     if float(intersection)/float(union)>0.95:
         return True
     else:
+
         return False
 
 
@@ -70,11 +95,221 @@ def find_seg(id_tuple,bbox):
     for item in corr:
         if check(item["bbox"],bbox):
             return item["segmentation"]
-    raise AttributeError
+
+
+def cocoseg_to_binary(seg, height, width):
+    """
+    COCO style segmentation to binary mask
+    :param seg: coco-style segmentation
+    :param height: image height
+    :param width: image width
+    :return: binary mask
+    """
+    if type(seg) == list:
+        rle = cocomask.frPyObjects(seg, height, width)
+        rle = cocomask.merge(rle)
+        mask = cocomask.decode([rle])
+    elif type(seg['counts']) == list:
+        rle = cocomask.frPyObjects(seg, height, width)
+        mask = cocomask.decode([rle])
+    else:
+        rle = cocomask.merge(seg)
+        mask = cocomask.decode([rle])
+    assert mask.shape[2] == 1
+    return mask[:, :, 0]
+
+
+# 按bbox来复制小物体
+# def bbox_copy(id, img, target, year):
+#     if id not in SOJ_INDEX:
+#         return img
+#     objects = SOJ_INDEX[id]  # [xmin, xmax, ymin, ymax,
+#                                         #  name, pose, truncated, difficult]s
+#     xmins = [int(float(i.text)) for i in target.iter('xmin')]
+#     xmaxs = [int(float(i.text)) for i in target.iter('xmax')]
+#     ymins = [int(float(i.text)) for i in target.iter('ymin')]
+#     ymaxs = [int(float(i.text)) for i in target.iter('ymax')]
+#     width = int(target.find('size').find('width').text)
+#     height = int(target.find('size').find('height').text)
+#
+#     for obj in objects:
+#         if random.random() > copy_possibility:
+#             continue
+#         # 获得小物体的信息
+#         [xmin, xmax, ymin, ymax, name, pose, truncated, difficult] = obj
+#         xmin = int(xmin)
+#         xmax =int(xmax)
+#         ymin = int(ymin)
+#         ymax = int(ymax)
+#         wid, hei = xmax-xmin, ymax-ymin
+#
+#         # 随机生成位置来复制小物体
+#         count = 0
+#         for i in range(10):
+#             flag = 1
+#             try:
+#                 center = (random.randrange(wid//2+1, width-wid//2),random.randrange(hei//2+1,height-hei//2))
+#             except:
+#                 continue
+#             for j in range(len(xmins)):  # 和所有方块检查相交
+#                 x1,x2,y1,y2 = xmins[j],xmaxs[j],ymins[j],ymaxs[j]
+#                 c = ((x1+x2)/2, (y1+y1)/2)
+#
+#                 # 只要有一个相交
+#                 if abs(c[0]-center[0])<wid/2+(x2-x1)/2\
+#                         and abs(c[1]-center[1])<hei/2+(y2-y1)/2:
+#                     flag = 0
+#                     break
+#             if flag == 0:  # 该位置不行，再找一个
+#                 continue
+#
+#             # 位置可行，开始复制
+#             count+=1
+#             item = img[ymin : ymax,xmin:xmax, : ]
+#             # cv2.imshow('1',item)
+#             # cv2.waitKey()
+#             img[center[1]-(hei+1)//2:center[1]+hei//2,\
+#             center[0]-(wid+1)//2:center[0]+wid//2, :] = item
+#             new_xmin = center[0]-(wid+1)//2
+#             new_xmax =  center[0]+wid//2
+#             new_ymin = center[1]-(hei+1)//2
+#             new_ymax = center[1]+hei//2
+#             xmins.append(new_xmin)
+#             xmaxs.append(new_xmax)
+#             ymins.append(new_ymin)
+#             ymaxs.append(new_ymax)
+#
+#             # 加入annotations
+#             node_obj = ET.Element('object')
+#             node_name = ET.Element('name')
+#             node_name.text = name
+#             node_pose = ET.Element('pose')
+#             node_pose.text = pose
+#             node_tru = ET.Element('truncated')
+#             node_tru.text = truncated
+#             node_diff = ET.Element('difficult')
+#             node_diff.text = difficult
+#             node_box = ET.Element('bndbox')
+#             node_xi = ET.Element('xmin')
+#             node_xi.text = new_xmin
+#             node_yi = ET.Element('ymin')
+#             node_yi.text = new_ymin
+#             node_xa = ET.Element('xmax')
+#             node_xa.text = new_xmax
+#             node_ya = ET.Element('ymax')
+#             node_ya.text = new_ymax
+#             node_box.append(node_xi)
+#             node_box.append(node_yi)
+#             node_box.append(node_xa)
+#             node_box.append(node_ya)
+#             node_obj.append(node_name)
+#             node_obj.append(node_pose)
+#             node_obj.append(node_tru)
+#             node_obj.append(node_diff)
+#             node_obj.append(node_box)
+#             target.append(node_obj)
+#
+#             if count==4:
+#                 break
+#
+#
+#     return img, target
+
+
+# 按seg来复制小物体并缩放
+def seg_copy(id, img, target, year):
+    if id not in SOJ_INDEX:
+        return img
+    objects = SOJ_INDEX[id]  # [xmin, xmax, ymin, ymax,
+                                        #  name, pose, truncated, difficult]s
+    # xmins = [int(float(i.text)) for i in target.iter('xmin')]
+    # xmaxs = [int(float(i.text)) for i in target.iter('xmax')]
+    # ymins = [int(float(i.text)) for i in target.iter('ymin')]
+    # ymaxs = [int(float(i.text)) for i in target.iter('ymax')]
+
+    # print(xmins)
+    # width = int(target.find('size').find('width').text)
+    # height = int(target.find('size').find('height').text)
+    width = img.shape[1]
+    height = img.shape[0]
+    xmins = [int(item[0]*width) for item in target]
+    xmaxs = [int(item[2]*width) for item in target]
+    ymins = [int(item[1]*height) for item in target]
+    ymaxs = [int(item[3]*height) for item in target]
+
+    class_to_ind = dict(zip(VOC_CLASSES, range(len(VOC_CLASSES))))
+
+    for obj in objects:
+
+        # 获得小物体的信息
+        [xmin, xmax, ymin, ymax, name, pose, truncated, difficult] = obj
+        xmin = int(xmin)
+        xmax =int(xmax)
+        ymin = int(ymin)
+        ymax = int(ymax)
+        wid, hei = xmax-xmin, ymax-ymin
+        wid = min(random.randrange(int(0.8*wid), int(1.2*wid)),width-2)
+        hei = min(random.randrange(int(0.8*hei), int(1.2*hei)), height-2)
+
+        bbox = [xmin/width, ymin/height, xmax/width, ymax/height]
+        # print(bbox)
+        id_tuple = (year, id)
+        seg = find_seg(id_tuple, bbox)
+        if seg == None:
+            continue
+        # print(seg)
+        mask = cocoseg_to_binary(seg, height, width)
+        item = img.copy()
+        for i in range(3):
+            item[:,:,i] = item[:,:,i] * mask
+        item = item[ymin:ymax, xmin:xmax, :]
+        item = cv2.resize(item, (wid, hei))
+        # 随机生成位置来复制小物体
+        count = 0
+        for i in range(10):
+            flag = 1
+            center = (random.randrange(wid//2+1, width-wid//2),random.randrange(hei//2+1,height-hei//2))
+
+            for j in range(len(xmins)):  # 和所有方块检查相交
+                x1,x2,y1,y2 = xmins[j],xmaxs[j],ymins[j],ymaxs[j]
+                c = ((x1+x2)/2, (y1+y1)/2)
+
+                # 只要有一个相交
+                if abs(c[0]-center[0])<wid/2+(x2-x1)/2\
+                        and abs(c[1]-center[1])<hei/2+(y2-y1)/2:
+                    flag = 0
+                    break
+            if flag == 0:  # 该位置不行，再找一个
+                continue
+
+            # 位置可行，开始复制
+            count+=1
+
+            img[center[1]-(hei+1)//2:center[1]+hei//2, center[0]-(wid+1)//2:center[0]+wid//2, :][item>0] = item[item>0]
+            # cv2.imshow('1',item)
+            # cv2.waitKey()
+            # img[center[1]-(hei+1)//2:center[1]+hei//2, center[0]-(wid+1)//2:center[0]+wid//2, :] = item
+            new_xmin = center[0]-(wid+1)//2
+            new_xmax =  center[0]+wid//2
+            new_ymin = center[1]-(hei+1)//2
+            new_ymax = center[1]+hei//2
+            xmins.append(new_xmin)
+            xmaxs.append(new_xmax)
+            ymins.append(new_ymin)
+            ymaxs.append(new_ymax)
+
+
+            name = name.lower().strip()
+            idx = class_to_ind[name]
+            target.append([new_xmin/width,new_ymin/height,new_xmax/width,new_ymax/height,idx])
+
+            if count==4:
+                break
+
+    return img, target
 
 
 def boost(img,target,img_id):
-    t0 = time.time()
 
     anns = []
     height, width, channels = img.shape
@@ -88,7 +323,7 @@ def boost(img,target,img_id):
             ann['category_id'] = id
             anns.append(ann)
         # print("t1",time.time()-t0)
-        new_anns, new_img = get_new_data(anns, img, config=InstaBoostConfig(heatmap_flag=True))
+        new_anns, new_img = get_new_data(anns, img, config=InstaBoostConfig(heatmap_flag=False))
         # print("t2",time.time()-t0)
         for id in range(len(target)):
             for ann in new_anns:
@@ -106,6 +341,7 @@ def boost(img,target,img_id):
     # cv2.imwrite("image/%d_new.png"%r,new_img)
 
     return new_img,target
+
 
 class VOCAnnotationTransform(object):
     """Transforms a VOC annotation into a Tensor of bbox coords and label index
@@ -146,7 +382,7 @@ class VOCAnnotationTransform(object):
             for i, pt in enumerate(pts):
                 cur_pt = int(bbox.find(pt).text) - 1
                 # scale height or width
-                cur_pt = float(cur_pt) / width if i % 2 == 0 else float(cur_pt) / height
+                cur_pt = cur_pt / width if i % 2 == 0 else cur_pt / height
                 bndbox.append(cur_pt)
             label_idx = self.class_to_ind[name]
             bndbox.append(label_idx)
@@ -176,15 +412,17 @@ class VOCDetection(data.Dataset):
     def __init__(self, root,
                  image_sets=[('2007', 'trainval'), ('2012', 'trainval')],
                  transform=None, target_transform=VOCAnnotationTransform(),
-                 dataset_name='VOC0712'):
+                 dataset_name='VOC0712', aug=0):
         self.root = root
         self.image_set = image_sets
         self.transform = transform
         self.target_transform = target_transform
         self.name = dataset_name
+        self.aug = aug
         self._annopath = osp.join('%s', 'Annotations', '%s.xml')
         self._imgpath = osp.join('%s', 'JPEGImages', '%s.jpg')
         self.ids = list()
+        # self.num = 0
         for (year, name) in image_sets:
             rootpath = osp.join(self.root, 'VOC' + year)
             for line in open(osp.join(rootpath, 'ImageSets', 'Main', name + '.txt')):
@@ -192,43 +430,39 @@ class VOCDetection(data.Dataset):
 
     def __getitem__(self, index):
         im, gt, h, w = self.pull_item(index)
-        # img_id = self.ids[index]
-        #
-        # target = ET.parse(self._annopath % img_id).getroot()
-        # img = cv2.imread(self._imgpath % img_id)
-        # height, width, channels = img.shape
-        #
-        # if self.target_transform is not None:
-        #     target = self.target_transform(target, width, height)
-        #
-        # if self.image_set[0][1] in ("train","trainval") and random.random()<possibility:
-        #     img, target = boost(img,target,img_id)
-        #
-        # if self.transform is not None:
-        #     target = np.array(target)
-        #     img, boxes, labels = self.transform(img, target[:, :4], target[:, 4])
-        #     # to rgb
-        #     img = img[:, :, (2, 1, 0)]
-        #     # img = img.transpose(2, 0, 1)
-        #     target = np.hstack((boxes, np.expand_dims(labels, axis=1)))
 
-        return im,gt
+        return im, gt
 
     def __len__(self):
         return len(self.ids)
 
     def pull_item(self, index):
         img_id = self.ids[index]
+        # self.num += 1
+        try:
+            target = ET.parse(self._annopath % img_id).getroot()
+            img = cv2.imread(self._imgpath % img_id, cv2.IMREAD_COLOR)
+            # cv2.imwrite("image/%d_img.png"%index,img)
+            height, width, channels = img.shape
+            if self.target_transform is not None:
+                target = self.target_transform(target, width, height)
+            if self.image_set[0][1] in ("train","trainval") and random.random()<boost_possibility:
+                img, target = boost(img,target,img_id)
+            if self.image_set[0][1] in ("train","trainval") and img_id[1] in SOJ_INDEX and random.random() < copy_possibility:
+                img, target = seg_copy(img_id[1], img, target, img_id[0][-4:])
+            # if self.num<20:
+            #     print(index)
+            #     print(target)
+            #     cv2.imwrite("image/%d_boost.png"%index,img)
 
-        target = ET.parse(self._annopath % img_id).getroot()
-        img = cv2.imread(self._imgpath % img_id)
-        height, width, channels = img.shape
 
-        if self.target_transform is not None:
-            target = self.target_transform(target, width, height)
+        except:
+            target = ET.parse(self._annopath % img_id).getroot()
+            img = cv2.imread(self._imgpath % img_id, cv2.IMREAD_COLOR)
+            height, width, channels = img.shape
+            if self.target_transform is not None:
+                target = self.target_transform(target, width, height)
 
-        if self.image_set[0][1] in ("train","trainval") and random.random()<possibility:
-            img, target = boost(img,target,img_id)
 
         if self.transform is not None:
             target = np.array(target)
