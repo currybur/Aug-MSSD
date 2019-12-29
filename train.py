@@ -4,8 +4,8 @@ from layers.modules import MultiBoxLoss
 from layers.modules import FocalLoss
 from models.ssd import build_ssd
 from models.fssd import build_fssd
-from models.rfssd import build_rfssd
-from models.drfssd import build_drfssd
+from models.mssd import build_mssd
+from models.dfssd import build_dfssd
 
 import os
 import sys
@@ -25,15 +25,15 @@ warnings.filterwarnings("ignore")
 VOC_ROOT = "./data/VOCdevkit"
 model_zoo = {"ssd":build_ssd,
              "fssd":build_fssd,
-             "rfssd":build_rfssd,
-             "drfssd":build_drfssd
+             "mssd":build_mssd,
+             "dfssd":build_dfssd
              }
 losses = {
     "MultiBoxLoss":MultiBoxLoss,
     "FocalLoss":FocalLoss
 }
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
 def str2bool(v):
     return v.lower() in ("yes", "true", "t", "1")
