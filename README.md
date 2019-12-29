@@ -3,18 +3,55 @@ The course project of EI339 Artificial Intelligence 2019 Fall, SJTU. Our topic i
 ## Description
 Recent great progress on object detection is stimulated by the deep learning pipelines, such as Faster R-CNN, Yolo and SSD. These pipelines indeed work well on large object with high resolution, clear appearance and structure from which the discriminative features can be learned. However, they usually fail to detect very small objects, as rich representations are difficult to learn from their poor-quality appearance and structure. Moreover, two stage detectors such as Faster R-CNN are more likely to perform better than one stage detectors, e.g., Yolo and SSD. In this project, you are required to improve detection performance on small objects based on the SSD pipeline.
 ## Requirement
-### Baseline
-Re-implement the SSD and evaluate recall, precision, mAP and FPS on 
-Pascal VOC 2007 Dataset for each kind of size category.
-Note that each object is assigned to a size category, depending on the object’s percentile size within its category: extra-small (XS: bottom 10%); small (S: next 20%); medium (M: next 40%); large (L: next 20%); extra-large (XL: next 10%).
-### Good work
-Read some related papers and apply some novel methods to improve the performance of small object detection. Here, we regard extra-small (XS) and small (S) size category as small objects.
-### Excellent work
-Do you have any novel idea to improve it? Have a try.
-## References
-- [A pytorch implementation of SSD](https://github.com/amdegroot/ssd.pytorch)
-- [A chinese blog about SSD](https://blog.csdn.net/weixin_43384257/article/details/93501343)
-- [VOC2007 dataset](http://host.robots.ox.ac.uk/pascal/VOC/voc2007/index.html)
-- [What is mAP](https://www.zhihu.com/question/53405779/answer/419532990)
-- [Papers on small object detection](https://github.com/tjtum-chenlab/SmallObjectDetectionList)
++ opencv-python
++ matplotlib
++ tensorboardX
++ torchvision
++ pytorch
++ cython
++ instaboostfast
+
+## DataSets
+
+**Download VOC2007 trainval & test**
+
+```shell
+# specify a directory for dataset to be downloaded into, else default is ~/data/
+sh data/scripts/VOC2007.sh # <directory>
+```
+
+##### Download VOC2012 trainval
+
+```shell
+# specify a directory for dataset to be downloaded into, else default is ~/data/
+sh data/scripts/VOC2012.sh # <directory>
+```
+
+## Training 
+
+By default, you can train our model  using the train script simply specify the parameters listed in `train.py` as a flag or manually change them.
+
+```
+python train.py --model mssd
+```
+
+You can adjust the possibility for data augmentation in  `data/voc0712.py` as well.
+
+## Evaluation
+
+To evaluate our trained network, you can simply enter the following command:
+
+```
+python eval.py --model mssd --trained_model weights/aug_mssd.pth
+```
+
+## Performance
+
+**Aug-MSSD** model:  VOC2007 Test
+
+| mAP   | Extra Small | Small | Medium | Large | Extra Large |
+| ----- | ----------- | ----- | ------ | ----- | ----------- |
+| 79.62 | 23.40       | 57.14 | 87.13  | 94.77 | 92.49       |
+
+The detailed result is shown in  `eval/aug_mssd.txt` .
 
